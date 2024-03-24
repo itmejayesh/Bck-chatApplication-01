@@ -2,8 +2,10 @@ import {Server} from "socket.io";
 import {createServer} from "http";
 import crypto from "crypto";
 import SessionStore from "./SessionStore";
+import MessageStore from "./MessageStore";
 
 const store = new SessionStore();
+const messageStore = new MessageStore();
 const http = createServer();
 const io = new Server(http, {
 	cors: {
@@ -43,21 +45,36 @@ io.use((socket: any, next) => {
 	store.saveSesion(socket.sessionID, {
 		userID: socket.userID,
 		username: socket.username,
+		connected: true,
 	});
 	next();
 });
 
 io.on("connection", (socket: any) => {
 	const users: any = [];
-	console.log(store.findAllSession().length);
+	const message = messageStore.findMessagesForUser(socket.userID);
+	const messageInfo = new Map();
+	if (message) {
+		message.forEach((message: any) => {
+			const otheruser = message.from === socket.userID ? message.to : message.from;
+			if (messageInfo.has(otheruser)) {
+				messageInfo.get(otheruser).push(message);
+			} else {
+				messageInfo.set(otheruser, [message]);
+			}
+		});
+	}
+	console.log(messageInfo);
+
 	store.findAllSession().forEach((session) => {
 		users.push({
 			userID: session.userID,
 			username: session.username,
+			connected: session.connected,
+			message: messageInfo.get(session.userID) || [],
 		});
 	});
 
-	console.log("users: " + users);
 	socket.join(socket.userID);
 	socket.emit("users", users);
 
